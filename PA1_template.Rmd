@@ -21,17 +21,19 @@ stepsFrame <- aggregate(steps ~ date, data = validActivities, FUN = sum)
 ggplot(stepsFrame, aes(x=steps)) + geom_histogram(binwidth = 500)
 ```
 
-The mean total number of steps is:
 
-```{r stepMean,results='asis'}
-mean(stepsFrame$steps)
+
+```{r stepMeanMedian,results='hide'}
+stepMean <- mean(stepsFrame$steps)
+stepMedian <- median(stepsFrame$steps)
 ```
 
-The median total number of steps is:
 
-```{r stepMedian,results='asis'}
-median(stepsFrame$steps)
-```
+The mean total number of steps is: `r format(stepMean, digits = 7)`
+
+
+The median total number of steps is: `r format(stepMedian, digits = 7)`
+
 
 
 ## What is the average daily activity pattern?
@@ -49,6 +51,73 @@ The 5-minute interval, on average across all days, containing the maximum number
 
 ## Inputing missing values
 
+```{r missingValues,results='hide'}
+numMissingValues <- sum(is.na(activities$steps))
+```
+
+There are `r numMissingValues` missing values from the original dataset.  
+
+In place of the missing values, we fill in the mean of those 5-minute intervals.
+
+```{r fillMissingValues}
+stepsAndIntervals <- activities[, c('steps', 'interval')]
+processedSteps <- function(row) {
+  if(is.na(row['steps'])) {
+    interval <- row['interval']
+    #Find the mean for that interval across all days
+    stepsTimeSeriesFrame[stepsTimeSeriesFrame$interval == interval, 'steps']
+  }
+  else {
+    #Retain the steps, since it is not a missing value
+    row['steps']
+  }
+}
+#Fill in the processed steps value for each activity row
+processedActivities <-  data.frame(steps = apply(stepsAndIntervals, 1, processedSteps), interval = activities$interval, date = activities$date)
+```
+
+The histogram for the number of steps now looks like:
+
+```{r histogramOfProcessedSteps}
+stepsFrameProcessed <- aggregate(steps ~ date, data = processedActivities, FUN = sum)
+ggplot(stepsFrameProcessed, aes(x=steps)) + geom_histogram(binwidth = 500)
+
+```
+
+
+
+```{r stepMeanMedianProcessed,results='hide'}
+stepMeanProcessed <- mean(stepsFrameProcessed$steps)
+stepMedianProcessed <- median(stepsFrameProcessed$steps)
+```
+
+The mean total number of steps is: `r format(stepMeanProcessed, digits = 7)`
+
+
+The median total number of steps is: `r format(stepMedianProcessed, digits = 7)`
+
+
+There is no difference in the means obtained before and after filling the missing values.
+The median shows a difference of `r format(stepMedianProcessed - stepMedian, digits = 3)`. Hence, we could say that there is only a very little impact due to filling up of the missing value using the strategy we chose earlier.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+First, we categorize each activity measurement as a weekday or a weekend.
+
+```{r weekdayProcessing}
+dayOfWeek <- with(processedActivities, weekdays(as.Date(date)))
+processedActivities$dayType <- sapply(dayOfWeek, FUN = function(x) if (x %in% c("Saturday", "Sunday")) "weekend" else "weekday" )
+processedActivities <- transform(processedActivities, dayType <- factor(dayType))
+```
+
+Next, we compare the activity patterns between weekdays and weekends.
+
+
+```{r panelPlot}
+stepsTimeSeriesFrameProcessed <- aggregate(steps ~ interval + dayType, data = processedActivities, FUN = mean)
+stepsTimeSeriesFrameProcessed$formattedInterval <- with(stepsTimeSeriesFrameProcessed, formatC(interval, width = 4, format = "d", flag = "0"))
+ggplot(stepsTimeSeriesFrameProcessed, aes(x = interval, y = steps)) + geom_line() + xlab("hours") + facet_grid(dayType ~ .)
+```
+
+We can see that during weekdays, the activity is quite high during morning hours - whereas during weekends, the activity is more spread out.
